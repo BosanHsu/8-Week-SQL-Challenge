@@ -15,7 +15,6 @@ delivery performance, and pizza customizations.
 - [SQL Skills Practiced](#sql-skills-practiced)
 - [A. Pizza Metrics](#a-pizza-metrics)
 - [B. Runner and Customer Experience](#b-runner-and-customer-experience)
-- [Key Findings](#key-findings)
 - [Notes and Reflections](#notes-and-reflections)
 - [Repository Files](#repository-files)
 
@@ -439,11 +438,17 @@ WITH updated_runner_order AS (
         )::NUMERIC AS updated_duration
     FROM pizza_runner.runner_orders
     WHERE pickup_time != 'null'
+),
+distinct_order AS (
+    SELECT DISTINCT
+        order_id,
+        customer_id
+    FROM pizza_runner.customer_orders
 )
 SELECT
     customer_id,
     ROUND(AVG(run_ord.updated_distance), 2) AS avg_distance
-FROM pizza_runner.customer_orders AS cus_ord
+FROM distinct_order AS cus_ord
 JOIN updated_runner_order AS run_ord
     ON cus_ord.order_id = run_ord.order_id
 GROUP BY customer_id
@@ -453,12 +458,13 @@ ORDER BY customer_id;
 | customer_id | avg_distance |
 | ---: | ---: |
 | 101 | 20.00 |
-| 102 | 16.73 |
+| 102 | 18.40 |
 | 103 | 23.40 |
 | 104 | 10.00 |
 | 105 | 25.00 |
 
-Distances are measured in kilometres.
+Distances are measured in kilometres. `distinct_order` prevents an order with
+multiple pizzas from counting the same delivery distance more than once.
 
 ### 5. What was the difference between the longest and shortest delivery times for all orders?
 
@@ -562,28 +568,6 @@ ORDER BY runner_id;
 This solution treats an order as successfully delivered when `pickup_time` is
 not the text value `'null'`.
 
-## Key Findings
-
-- Customers placed 10 unique orders containing 14 pizzas.
-- Eight orders were successfully delivered: runner 1 delivered 4, runner 2
-  delivered 3, and runner 3 delivered 1.
-- The delivered pizzas included 9 Meatlovers and 3 Vegetarian pizzas.
-- Order 4 was the largest delivered order, containing 3 pizzas.
-- Customer 103 changed every delivered pizza; customers 101 and 102 made no changes.
-- Only one delivered pizza had both exclusions and extras.
-- The busiest observed hours were 13:00, 18:00, and 21:00, with 3 pizzas each.
-- Runner registrations were highest in the first week, when 2 runners signed up.
-- Runner 3 had the shortest average pickup wait at about 10.47 minutes; runner 2
-  had the longest at about 20.01 minutes.
-- Average pickup wait rose from about 12.36 minutes for one pizza to 29.28 minutes
-  for three pizzas, although this interval is not a pure preparation-time measure.
-- Customer 105 had the longest average delivery distance at 25 km, while customer
-  104 had the shortest at 10 km.
-- Delivery speeds ranged from 35.10 to 93.60 km/h, with no clear trend by distance
-  or number of pizzas in the eight successful deliveries.
-- Runner 1 completed 100% of assigned deliveries, compared with 75% for runner 2
-  and 50% for runner 3.
-
 ## Notes and Reflections
 
 ### A. Pizza Metrics
@@ -593,12 +577,18 @@ not the text value `'null'`.
 - `pickup_time` is currently text, so successful deliveries are identified with
   `pickup_time != 'null'`. Cleaning textual nulls and casting this column to a
   timestamp would make later analysis safer.
-- Question A10 currently uses `COUNT(*)`, which counts pizza rows. To interpret
-  “orders” as unique orders, use `COUNT(DISTINCT order_id)` instead.
+- Question A10 follows the challenge convention by using `COUNT(*)` to count
+  pizza order rows. `COUNT(DISTINCT order_id)` would answer a different question:
+  the number of unique customer orders per day.
 - The `pizza_names` join in question A5 is not required for the current output.
 
 ### B. Runner and Customer Experience
 
+- In question B4, joining `customer_orders` directly to `runner_orders` caused
+  an order's delivery distance to be repeated once for every pizza in that order.
+  This unintentionally weighted the average by pizza count and produced 16.73 km
+  for customer 102. Creating `distinct_order` with one `order_id` and
+  `customer_id` per row before the join corrected the average to 18.40 km.
 - Question B6 is analysed at the individual-order level. The
   dataset is too small to support a reliable trend between speed, distance, and
   pizza count.
