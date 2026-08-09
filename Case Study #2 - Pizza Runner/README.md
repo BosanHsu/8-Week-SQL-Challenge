@@ -586,15 +586,20 @@ not the text value `'null'`.
 
 ## Notes and Reflections
 
-- Question 7 demonstrates why raw categorical values should be inspected with
+### A. Pizza Metrics
+
+- Question A7 demonstrates why raw categorical values should be inspected with
   `SELECT DISTINCT` before writing conditional logic.
 - `pickup_time` is currently text, so successful deliveries are identified with
   `pickup_time != 'null'`. Cleaning textual nulls and casting this column to a
   timestamp would make later analysis safer.
-- Question 10 currently uses `COUNT(*)`, which counts pizza rows. To interpret
+- Question A10 currently uses `COUNT(*)`, which counts pizza rows. To interpret
   “orders” as unique orders, use `COUNT(DISTINCT order_id)` instead.
-- The `pizza_names` join in question 5 is not required for the current output.
-- Runner Experience question 6 is analysed at the individual-order level. The
+- The `pizza_names` join in question A5 is not required for the current output.
+
+### B. Runner and Customer Experience
+
+- Question B6 is analysed at the individual-order level. The
   dataset is too small to support a reliable trend between speed, distance, and
   pizza count.
 
