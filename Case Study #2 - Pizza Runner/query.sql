@@ -354,15 +354,19 @@ WITH updated_runner_order AS
 )
 
 SELECT
-	runner_id,
-    ROUND(AVG(updated_distance/(updated_duration/60)), 2) AS avg_speed
+	run_ord.order_id,
+    run_ord.runner_id,
+    ROUND(AVG(run_ord.updated_distance/(run_ord.updated_duration/60)), 2) AS avg_speed,
+    MAX(run_ord.updated_distance) AS distance,
+    COUNT(*) AS pizza_num
 FROM updated_runner_order AS run_ord
-GROUP BY runner_id
-ORDER BY runner_id;
+JOIN pizza_runner.customer_orders AS cus_ord
+ON cus_ord.order_id = run_ord.order_id
+GROUP BY run_ord.order_id, run_ord.runner_id
+ORDER BY avg_speed;
 
 -- 單位為 km/h。
--- 注意：題目要求查看每位 runner 的每次配送，但目前查詢會彙總成每位 runner 的平均速度。
--- 若要分析趨勢，可保留 order_id 層級，再比較距離、pizza 數量與配送速度。
+-- 沒有明顯趨勢
 
 -- 7. What is the successful delivery percentage for each runner?
 -- 此處以 pickup_time 不是字串 'null' 作為成功配送的判斷條件。
