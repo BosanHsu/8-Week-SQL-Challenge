@@ -14,6 +14,7 @@ delivery performance, and pizza customizations.
 - [Entity Relationship](#entity-relationship)
 - [SQL Skills Practiced](#sql-skills-practiced)
 - [A. Pizza Metrics](#a-pizza-metrics)
+- [B. Runner and Customer Experience](#b-runner-and-customer-experience)
 - [Key Findings](#key-findings)
 - [Notes and Reflections](#notes-and-reflections)
 - [Repository Files](#repository-files)
@@ -65,6 +66,9 @@ declare foreign-key constraints.
 - Data exploration with `SELECT DISTINCT`
 - Handling SQL `NULL`, the string `'null'`, and empty strings
 - Extracting hour and day values from timestamps
+- Cleaning text fields with `REGEXP_REPLACE()` and `NULLIF()`
+- Interval calculations with `EXTRACT(EPOCH ...)`
+- Unit conversion for delivery speed
 
 ## A. Pizza Metrics
 
@@ -309,6 +313,255 @@ ORDER BY EXTRACT(DOW FROM order_date);
 PostgreSQL uses `0` for Sunday through `6` for Saturday, so these values represent
 Wednesday through Saturday.
 
+## B. Runner and Customer Experience
+
+### 1. How many runners signed up for each one-week period?
+
+The weekly periods begin on 2021-01-01.
+
+```sql
+WITH week_list AS (
+    SELECT
+        registration_date,
+        ((registration_date - '2021-01-01'::DATE) / 7) + 1 AS week
+    FROM pizza_runner.runners
+)
+SELECT
+    week,
+    CASE
+        WHEN week IS NOT NULL
+            THEN '2021-01-01'::DATE + (week - 1) * 7
+    END AS week_start_date,
+    COUNT(*) AS registered_runner
+FROM week_list
+GROUP BY week
+ORDER BY week;
+```
+
+| week | week_start_date | registered_runner |
+| ---: | --- | ---: |
+| 1 | 2021-01-01 | 2 |
+| 2 | 2021-01-08 | 1 |
+| 3 | 2021-01-15 | 1 |
+
+PostgreSQL subtracts one `DATE` from another to return the number of elapsed days.
+Dividing that integer by 7 uses integer division, and adding 1 makes the first
+seven-day period week 1.
+
+### 2. What was the average time in minutes it took each runner to arrive at Pizza Runner HQ to pick up an order?
+
+```sql
+WITH distinct_order AS (
+    SELECT DISTINCT
+        cus_ord.order_id,
+        cus_ord.order_date
+    FROM pizza_runner.customer_orders AS cus_ord
+)
+SELECT
+    run_ord.runner_id,
+    EXTRACT(
+        EPOCH FROM AVG(
+            run_ord.pickup_time::TIMESTAMP - dis_ord.order_date::TIMESTAMP
+        )
+    ) / 60 AS average_pickup_minutes
+FROM distinct_order AS dis_ord
+JOIN pizza_runner.runner_orders AS run_ord
+    ON dis_ord.order_id = run_ord.order_id
+WHERE run_ord.pickup_time != 'null'
+GROUP BY run_ord.runner_id
+ORDER BY run_ord.runner_id;
+```
+
+| runner_id | average_pickup_minutes |
+| ---: | ---: |
+| 1 | 14.3291666666666667 |
+| 2 | 20.0111111166666667 |
+| 3 | 10.4666666666666667 |
+
+`EPOCH` converts the averaged interval to total seconds; dividing by 60 returns
+total minutes. This is safer than extracting only the minute component, which
+would omit the hour component of intervals longer than one hour.
+
+### 3. Is there a relationship between the number of pizzas and how long the order takes to prepare?
+
+```sql
+WITH pizza_numbers AS (
+    SELECT
+        order_id,
+        COUNT(*) AS num_of_pizza,
+        MAX(cus_ord.order_date) AS order_date
+    FROM pizza_runner.customer_orders AS cus_ord
+    GROUP BY order_id
+)
+SELECT
+    num_of_pizza,
+    EXTRACT(
+        EPOCH FROM AVG(
+            run_ord.pickup_time::TIMESTAMP - pizza_num.order_date::TIMESTAMP
+        )
+    ) / 60 AS average_pickup_minutes
+FROM pizza_numbers AS pizza_num
+JOIN pizza_runner.runner_orders AS run_ord
+    ON pizza_num.order_id = run_ord.order_id
+WHERE run_ord.pickup_time != 'null'
+GROUP BY num_of_pizza
+ORDER BY num_of_pizza;
+```
+
+| num_of_pizza | average_pickup_minutes |
+| ---: | ---: |
+| 1 | 12.3566666666666667 |
+| 2 | 18.3750000000000000 |
+| 3 | 29.2833333333333333 |
+
+The observed pickup wait increases with the number of pizzas. However, the data
+does not include the actual time at which food preparation finished. The interval
+from ordering to pickup may also include the runner's travel time to the store,
+so it is only a proxy for preparation time rather than a pure preparation metric.
+
+### 4. What was the average distance travelled for each customer?
+
+The raw `distance` and `duration` columns contain inconsistent units and text.
+`REGEXP_REPLACE(..., '[^0-9.]', '', 'g')` removes everything except digits and
+decimal points, while `NULLIF(..., '')` converts an empty result to SQL `NULL`
+before the value is cast to `NUMERIC`.
+
+```sql
+WITH updated_runner_order AS (
+    SELECT
+        order_id,
+        runner_id,
+        NULLIF(
+            REGEXP_REPLACE(distance, '[^0-9.]', '', 'g'), ''
+        )::NUMERIC AS updated_distance,
+        NULLIF(
+            REGEXP_REPLACE(duration, '[^0-9.]', '', 'g'), ''
+        )::NUMERIC AS updated_duration
+    FROM pizza_runner.runner_orders
+    WHERE pickup_time != 'null'
+)
+SELECT
+    customer_id,
+    ROUND(AVG(run_ord.updated_distance), 2) AS avg_distance
+FROM pizza_runner.customer_orders AS cus_ord
+JOIN updated_runner_order AS run_ord
+    ON cus_ord.order_id = run_ord.order_id
+GROUP BY customer_id
+ORDER BY customer_id;
+```
+
+| customer_id | avg_distance |
+| ---: | ---: |
+| 101 | 20.00 |
+| 102 | 16.73 |
+| 103 | 23.40 |
+| 104 | 10.00 |
+| 105 | 25.00 |
+
+Distances are measured in kilometres.
+
+### 5. What was the difference between the longest and shortest delivery times for all orders?
+
+```sql
+WITH updated_runner_order AS (
+    SELECT
+        order_id,
+        runner_id,
+        NULLIF(
+            REGEXP_REPLACE(distance, '[^0-9.]', '', 'g'), ''
+        )::NUMERIC AS updated_distance,
+        NULLIF(
+            REGEXP_REPLACE(duration, '[^0-9.]', '', 'g'), ''
+        )::NUMERIC AS updated_duration
+    FROM pizza_runner.runner_orders
+    WHERE pickup_time != 'null'
+)
+SELECT
+    MAX(updated_duration) - MIN(updated_duration) AS max_diff_duration
+FROM updated_runner_order AS run_ord;
+```
+
+| max_diff_duration |
+| ---: |
+| 30 |
+
+The difference between the longest and shortest successful delivery durations
+was 30 minutes.
+
+### 6. What was the average speed for each runner for each delivery, and is there a trend?
+
+```sql
+WITH updated_runner_order AS (
+    SELECT
+        order_id,
+        runner_id,
+        NULLIF(
+            REGEXP_REPLACE(distance, '[^0-9.]', '', 'g'), ''
+        )::NUMERIC AS updated_distance,
+        NULLIF(
+            REGEXP_REPLACE(duration, '[^0-9.]', '', 'g'), ''
+        )::NUMERIC AS updated_duration
+    FROM pizza_runner.runner_orders
+    WHERE pickup_time != 'null'
+)
+SELECT
+    run_ord.order_id,
+    run_ord.runner_id,
+    ROUND(
+        AVG(run_ord.updated_distance / (run_ord.updated_duration / 60)), 2
+    ) AS avg_speed,
+    MAX(run_ord.updated_distance) AS distance,
+    COUNT(*) AS pizza_num
+FROM updated_runner_order AS run_ord
+JOIN pizza_runner.customer_orders AS cus_ord
+    ON cus_ord.order_id = run_ord.order_id
+GROUP BY run_ord.order_id, run_ord.runner_id
+ORDER BY avg_speed;
+```
+
+| order_id | runner_id | avg_speed | distance | pizza_num |
+| ---: | ---: | ---: | ---: | ---: |
+| 4 | 2 | 35.10 | 23.4 | 3 |
+| 1 | 1 | 37.50 | 20 | 1 |
+| 5 | 3 | 40.00 | 10 | 1 |
+| 3 | 1 | 40.20 | 13.4 | 2 |
+| 2 | 1 | 44.44 | 20 | 1 |
+| 10 | 1 | 60.00 | 10 | 2 |
+| 7 | 2 | 60.00 | 25 | 1 |
+| 8 | 2 | 93.60 | 23.4 | 1 |
+
+Speed is measured in kilometres per hour. The eight successful deliveries do not
+show a clear or consistent relationship between speed, distance, and pizza count.
+For example, two deliveries covering 23.4 km had very different speeds of 35.10
+and 93.60 km/h. Orders containing one or two pizzas also appear across both lower
+and higher speeds. With such a small dataset, no reliable trend can be concluded.
+
+### 7. What is the successful delivery percentage for each runner?
+
+```sql
+WITH success_test AS (
+    SELECT
+        runner_id,
+        CASE WHEN pickup_time != 'null' THEN 1 END AS succeeded
+    FROM pizza_runner.runner_orders AS run_ord
+)
+SELECT
+    runner_id,
+    (SUM(succeeded)::FLOAT / COUNT(*)::FLOAT) * 100 AS succeed_rate
+FROM success_test
+GROUP BY runner_id
+ORDER BY runner_id;
+```
+
+| runner_id | succeed_rate |
+| ---: | ---: |
+| 1 | 100 |
+| 2 | 75 |
+| 3 | 50 |
+
+This solution treats an order as successfully delivered when `pickup_time` is
+not the text value `'null'`.
+
 ## Key Findings
 
 - Customers placed 10 unique orders containing 14 pizzas.
@@ -319,6 +572,17 @@ Wednesday through Saturday.
 - Customer 103 changed every delivered pizza; customers 101 and 102 made no changes.
 - Only one delivered pizza had both exclusions and extras.
 - The busiest observed hours were 13:00, 18:00, and 21:00, with 3 pizzas each.
+- Runner registrations were highest in the first week, when 2 runners signed up.
+- Runner 3 had the shortest average pickup wait at about 10.47 minutes; runner 2
+  had the longest at about 20.01 minutes.
+- Average pickup wait rose from about 12.36 minutes for one pizza to 29.28 minutes
+  for three pizzas, although this interval is not a pure preparation-time measure.
+- Customer 105 had the longest average delivery distance at 25 km, while customer
+  104 had the shortest at 10 km.
+- Delivery speeds ranged from 35.10 to 93.60 km/h, with no clear trend by distance
+  or number of pizzas in the eight successful deliveries.
+- Runner 1 completed 100% of assigned deliveries, compared with 75% for runner 2
+  and 50% for runner 3.
 
 ## Notes and Reflections
 
@@ -330,11 +594,14 @@ Wednesday through Saturday.
 - Question 10 currently uses `COUNT(*)`, which counts pizza rows. To interpret
   “orders” as unique orders, use `COUNT(DISTINCT order_id)` instead.
 - The `pizza_names` join in question 5 is not required for the current output.
+- Runner Experience question 6 is analysed at the individual-order level. The
+  dataset is too small to support a reliable trend between speed, distance, and
+  pizza count.
 
 ## Repository Files
 
 - [`schema.sql`](./schema.sql) creates the schema, tables, and sample data.
-- [`query.sql`](./query.sql) contains the Pizza Metrics queries.
+- [`query.sql`](./query.sql) contains the Pizza Metrics and Runner Experience queries.
 - [`README.md`](./README.md) documents the questions, solutions, results, and reflections.
 
 ## Environment
