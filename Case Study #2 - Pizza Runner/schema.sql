@@ -22,11 +22,11 @@ CREATE TABLE customer_orders (
   "pizza_id" INTEGER,
   "exclusions" VARCHAR(4),
   "extras" VARCHAR(4),
-  "order_time" TIMESTAMP
+  "order_date" TIMESTAMP
 );
 
 INSERT INTO customer_orders
-  ("order_id", "customer_id", "pizza_id", "exclusions", "extras", "order_time")
+  ("order_id", "customer_id", "pizza_id", "exclusions", "extras", "order_date")
 VALUES
   ('1', '101', '1', '', '', '2020-01-01 18:05:02'),
   ('2', '101', '1', '', '', '2020-01-01 19:00:52'),
