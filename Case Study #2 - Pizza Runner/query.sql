@@ -155,17 +155,17 @@ WHERE run_ord.pickup_time != 'null';
 ---- 9. What was the total volume of pizzas ordered for each hour of the day?
 
 SELECT
-	EXTRACT(HOUR FROM order_time) AS "hour",
+	EXTRACT(HOUR FROM order_date) AS "hour",
     COUNT(*) AS volume
 FROM pizza_runner.customer_orders AS cus_ord
-GROUP BY EXTRACT(HOUR FROM order_time)
-ORDER BY EXTRACT(HOUR FROM order_time);
+GROUP BY EXTRACT(HOUR FROM order_date)
+ORDER BY EXTRACT(HOUR FROM order_date);
 
 ---- 10. What was the volume of orders for each day of the week?
 
 SELECT
-	EXTRACT(DOW FROM order_time) AS "day",
+	EXTRACT(DOW FROM order_date) AS "day",
     COUNT(*) AS volume
 FROM pizza_runner.customer_orders AS cus_ord
-GROUP BY EXTRACT(DOW FROM order_time)
-ORDER BY EXTRACT(DOW FROM order_time);
+GROUP BY EXTRACT(DOW FROM order_date)
+ORDER BY EXTRACT(DOW FROM order_date);

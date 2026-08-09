@@ -47,9 +47,10 @@ schema, so rerunning it when the schema exists will produce an error.
 ## Entity Relationship
 
 ```text
-customer_orders.order_id → runner_orders.order_id
-customer_orders.pizza_id → pizza_names.pizza_id
-pizza_recipes.pizza_id   → pizza_names.pizza_id
+runners.runner_id        → runner_orders.runner_id
+runner_orders.order_id   → customer_orders.order_id
+pizza_names.pizza_id     → customer_orders.pizza_id
+pizza_recipes.pizza_id   → customer_orders.pizza_id
 ```
 
 The recipe, exclusion, and extra columns contain comma-separated IDs that map to
@@ -270,11 +271,11 @@ WHERE run_ord.pickup_time != 'null';
 
 ```sql
 SELECT
-    EXTRACT(HOUR FROM order_time) AS "hour",
+    EXTRACT(HOUR FROM order_date) AS "hour",
     COUNT(*) AS volume
 FROM pizza_runner.customer_orders AS cus_ord
-GROUP BY EXTRACT(HOUR FROM order_time)
-ORDER BY EXTRACT(HOUR FROM order_time);
+GROUP BY EXTRACT(HOUR FROM order_date)
+ORDER BY EXTRACT(HOUR FROM order_date);
 ```
 
 | hour | volume |
@@ -291,11 +292,11 @@ ORDER BY EXTRACT(HOUR FROM order_time);
 
 ```sql
 SELECT
-    EXTRACT(DOW FROM order_time) AS "day",
+    EXTRACT(DOW FROM order_date) AS "day",
     COUNT(*) AS volume
 FROM pizza_runner.customer_orders AS cus_ord
-GROUP BY EXTRACT(DOW FROM order_time)
-ORDER BY EXTRACT(DOW FROM order_time);
+GROUP BY EXTRACT(DOW FROM order_date)
+ORDER BY EXTRACT(DOW FROM order_date);
 ```
 
 | day | volume |
