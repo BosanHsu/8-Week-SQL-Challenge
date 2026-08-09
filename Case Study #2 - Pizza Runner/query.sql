@@ -296,12 +296,18 @@ WITH updated_runner_order AS
         )::NUMERIC AS updated_duration
     FROM pizza_runner.runner_orders
   	WHERE pickup_time != 'null'
+),
+
+distinct_order AS
+(
+	SELECT DISTINCT order_id, customer_id
+  	FROM pizza_runner.customer_orders
 )
 
 SELECT
 	customer_id,
     ROUND(AVG(run_ord.updated_distance), 2) AS avg_distance
-FROM pizza_runner.customer_orders AS cus_ord
+FROM distinct_order AS cus_ord
 JOIN updated_runner_order AS run_ord
 ON cus_ord.order_id = run_ord.order_id
 GROUP BY customer_id
